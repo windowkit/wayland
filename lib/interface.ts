@@ -36,6 +36,41 @@ export default class Wl_interface extends EventEmitter{
   public readonly requests: (RequestDefinition | undefined)[];
   public readonly enums: Record<string, EnumDefinition>;
 
+  /**
+   * Every request again, synchronously.
+   *
+   * Named `$` rather than something readable because a protocol interface may
+   * itself have a request called `sync` — `wl_display` does — and a namespace
+   * that can be shadowed by the thing it namespaces is a bug waiting for the
+   * next protocol revision.
+   *
+   * Nothing about the Wayland wire makes a request asynchronous. A request is
+   * a one-way message: the client allocates the new object's id itself and
+   * the compositor never replies, so `wl_surface.commit()` has nothing to
+   * wait for and `xdg_surface.get_toplevel()` knows its answer before it
+   * writes. The promises the default methods return are about the *socket* —
+   * they resolve when the bytes have been accepted — and awaiting them is
+   * the right thing when a caller wants backpressure.
+   *
+   * It is the wrong thing when a caller cannot await at all, and that turns
+   * out to be the case that matters: react-x11 realises windows inside
+   * React's commit phase, which is synchronous, and an `app.createWindow()`
+   * that answers a Promise gives the renderer a thenable where it expected a
+   * window. So the same calls are here too, returning what they create
+   * instead of a promise for it:
+   *
+   * ```js
+   * const surface  = compositor.$.create_surface();      // a wl_surface
+   * const xdg      = wmBase.$.get_xdg_surface(surface.id);
+   * surface.$.commit();
+   * ```
+   *
+   * The trade is backpressure: these write into the socket's buffer and do
+   * not wait for it to drain. That is the same bargain every X client makes,
+   * and for a UI's request volume it is not close.
+   */
+  public readonly $: Record<string, (...args :any[]) => any> = {};
+
 
   /**
    * Interface constructor.
@@ -73,7 +108,12 @@ export default class Wl_interface extends EventEmitter{
           this.display.once("close", onClose);
           this.display.once("error", onError);
           try{
-            await once(wl_callback, "done", {signal: ac.signal});
+            // Hand back what `done` carried. `wl_callback.done` has a single
+            // `callback_data` argument whose meaning is the caller's: for
+            // `wl_display.sync` it is a serial, and for `wl_surface.frame` it
+            // is the frame timestamp a paint loop needs to pace itself.
+            const [data] = await once(wl_callback, "done", {signal: ac.signal});
+            return data;
           }catch(e :any){
             if(ac.signal.aborted) throw ac.signal.reason ?? e;
             throw e;
@@ -106,6 +146,24 @@ export default class Wl_interface extends EventEmitter{
       }else{
         (this as any)[op.name] = this.display.request.bind(this.display, this.id, opcode, op);
       }
+      // The synchronous twin. See `Wl_interface.$`.
+      (this.$ as any)[op.name] = isInterfaceCreationRequest(op)
+        ? (...args :any[]) => {
+            const itf = this.display.createInterface((op.args[0] as any).interface);
+            try{
+              this.display.requestNow(this.id, opcode, op, itf.id, ...args);
+            }catch(e :any){
+              this.display.deleteId(itf.id);
+              throw new Error(`${this.name}.${op.name}(${op.args.map(({name})=>name).join(", ")}) failed: ${e.message}`);
+            }
+            return itf;
+          }
+        : isDestructorRequest(op)
+          ? (...args :any[]) => {
+              this.display.requestNow(this.id, opcode, op, ...args);
+              this.display.deleteId(this.id);
+            }
+          : (...args :any[]) => this.display.requestNow(this.id, opcode, op, ...args);
     }
   }
 
@@ -131,7 +189,7 @@ export default class Wl_interface extends EventEmitter{
     const event = this.events[evcode];
     if(!event) return this.emitError(new Error(`No event with index ${evcode} in interface ${this.name}`));
     try{
-      const values = get_args(b, event.args);
+      const values = get_args(b, event.args, this.display.takeFd);
       if(isInterfaceArgument(event.args[0])){
         if(values.length != 1){
           // We might be missing a case where a new interface is returned with additional arguments.
