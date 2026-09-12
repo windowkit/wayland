@@ -84,6 +84,32 @@ export function writeArray(
   return offset + array.length + padding;
 }
 
+/**
+ * Pick out the descriptors a request carries out-of-band.
+ *
+ * An `fd` argument occupies no bytes in the message body — it travels as
+ * SCM_RIGHTS ancillary data — so the value the caller passed never reaches
+ * {@link format_args}. This pulls those values out, in argument order, which
+ * is the order the ancillary data has to be in: the wire matches descriptors
+ * to `fd` arguments by position in the stream, not by message.
+ *
+ * @returns the descriptors, or an empty array when the request has no `fd`
+ *          argument (the overwhelmingly common case, so callers can skip the
+ *          sendmsg path on a `length === 0` check).
+ */
+export function collect_fds(args :any[], def :ArgumentDefinition[]) :number[]{
+  const fds :number[] = [];
+  for(let i = 0; i < def.length; i++){
+    if(def[i].type !== "fd") continue;
+    const fd = args[i];
+    if(typeof fd !== "number" || !Number.isInteger(fd) || fd < 0){
+      throw new Error(`Invalid type: ${typeof fd} for ${def[i].name}. Expected a file descriptor (a non-negative integer)`);
+    }
+    fds.push(fd);
+  }
+  return fds;
+}
+
 export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
   if(args.length != def.length) throw new Error(`Bad number of arguments (${args.length}, expected ${def.length}).`);
 
@@ -184,9 +210,14 @@ export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
 }
 /**
  * Parses a buffer into an array of values, using the arguments definition.
+ *
+ * @param takeFd supplies the next descriptor from the connection's ancillary
+ *   queue, for each `fd` argument, in argument order. Omit it — or supply one
+ *   on a transport that cannot receive descriptors — and `fd` arguments read
+ *   as -1, which is what a client that never asked for them should see.
  * @returns the parsed values with correct types. Better types might be inferred
  */
-export function get_args<T extends ArgumentDefinition[]>(b :Buffer, defs :T) :wl_arg[]{
+export function get_args<T extends ArgumentDefinition[]>(b :Buffer, defs :T, takeFd? :() => number) :wl_arg[]{
   const values = [];
   let offset = 0;
 
@@ -219,9 +250,9 @@ export function get_args<T extends ArgumentDefinition[]>(b :Buffer, defs :T) :wl
         offset = newOffset;
         break;
       case "fd":
-        //fd arguments are a placeholder of size 0, received as ancillary data
-        //Push -1 (bad FD) and expect it to be replaced by the actual data if supported
-        values.push(-1);
+        //fd arguments are a placeholder of size 0, received as ancillary data.
+        //Without a supplier there is nothing to take, so -1 (bad FD) stands in.
+        values.push(takeFd ? takeFd() : -1);
         break;
       default:
         throw new Error(`Unsupported event argument type : ${arg.type}`);

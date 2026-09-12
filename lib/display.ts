@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 
 import { Wl_display, Wl_registry } from "../protocol/wayland.js";
 
-import { writeUInt, readUInt, format_args, get_args } from "./args.js";
+import { writeUInt, readUInt, format_args, get_args, collect_fds } from "./args.js";
 
 import Wl_interface from "./interface.js";
 import { parseInterface } from "./parse.js";
@@ -350,15 +350,57 @@ export default class Display extends EventEmitter{
   }
 
   /**
-   * 
+   * Write one message that carries descriptors, as a single sendmsg(2).
+   *
+   * The descriptors and the bytes that reference them must not be separated:
+   * the wire pairs ancillary data with `fd` arguments by their order in the
+   * stream, so a message split across two sends could have its descriptors
+   * attributed to whatever went out in between.
+   *
+   * The transport takes ownership — the descriptors are closed once they are
+   * on the wire, which is the same contract as `wl_shm.create_pool` and
+   * friends, where the compositor dups what it needs.
    */
-  public async request(srcId :number, opcode :number, def :RequestDefinition, ...args :any[]){
+  protected async writeWithFds(b :Buffer, fds :number[]){
+    const s = this.#s as any;
+    if(typeof s.sendFds !== "function"){
+      throw new Error(
+        "sending ancillary data not supported: this request passes a file descriptor, " +
+        "which needs a transport that can do sendmsg(2) with SCM_RIGHTS. " +
+        "Construct the Display with an fd-capable socket."
+      );
+    }
+    await new Promise<void>((resolve, reject)=>{
+      s.sendFds(b, fds, (err :Error|null|undefined)=> err? reject(err) : resolve());
+    });
+  }
+
+  /**
+   * Take the next descriptor the connection received, for one `fd` event
+   * argument. See {@link get_args}.
+   *
+   * Answers -1 on a transport that cannot receive descriptors, so a client
+   * that never uses one is unaffected by running on a plain socket.
+   *
+   * @internal called by {@link Wl_interface.push} while parsing an event; the
+   * ordering it depends on is the parser's, so there is no use for it outside.
+   */
+  public takeFd = () :number =>{
+    const s = this.#s as any;
+    if(typeof s.takeFds !== "function") return -1;
+    const [fd] = s.takeFds(1);
+    return (typeof fd === "number")? fd : -1;
+  }
+
+  /**
+   * Encode one request. Shared by {@link request} and {@link requestNow},
+   * which differ only in whether they wait for the socket.
+   */
+  protected encode(srcId :number, opcode :number, def :RequestDefinition, args :any[])
+    :{msg :Buffer, fds :number[]}{
     const b1 = Buffer.allocUnsafe(8);
     const b2 = format_args(args, def.args);
-    const with_ancillary = def.args.some(a=>a.type === "fd");
-    if(with_ancillary){
-      throw new Error("sending ancillary data not supported");
-    }
+    const fds = collect_fds(args, def.args);
     debug("Wayland request: ", srcId, opcode, args, b2.length);
     writeUInt(b1, srcId, 0);
     //16 most significant bits are the message length. 16 next bits are the message opcode.
@@ -366,7 +408,49 @@ export default class Display extends EventEmitter{
     //32768..65535 bytes would overflow the signed int32 that `<<` produces and
     //make writeUInt throw (or write a corrupt length).
     writeUInt(b1, (b1.length + b2.length) * 0x10000 + (opcode & 0xFFFF), 4);
-    await this.write(Buffer.concat([b1, b2]));
+    return {msg: Buffer.concat([b1, b2]), fds};
+  }
+
+  /**
+   * Write a request and return once the socket has taken it.
+   *
+   * The bytes go out synchronously either way — see {@link requestNow} — so
+   * what the promise adds is backpressure, not ordering.
+   */
+  public requestNow(srcId :number, opcode :number, def :RequestDefinition, ...args :any[]) :void{
+    const {msg, fds} = this.encode(srcId, opcode, def, args);
+    if(fds.length){
+      const s = this.#s as any;
+      if(typeof s.sendFds !== "function"){
+        throw new Error(
+          "sending ancillary data not supported: this request passes a file descriptor, " +
+          "which needs a transport that can do sendmsg(2) with SCM_RIGHTS. " +
+          "Construct the Display with an fd-capable socket."
+        );
+      }
+      s.sendFds(msg, fds);
+      return;
+    }
+    this.#s.write(msg as any);
+  }
+
+  /**
+   *
+   */
+  public async request(srcId :number, opcode :number, def :RequestDefinition, ...args :any[]){
+    const b1 = Buffer.allocUnsafe(8);
+    const b2 = format_args(args, def.args);
+    const fds = collect_fds(args, def.args);
+    debug("Wayland request: ", srcId, opcode, args, b2.length);
+    writeUInt(b1, srcId, 0);
+    //16 most significant bits are the message length. 16 next bits are the message opcode.
+    //Compose with multiplication/addition rather than `<<16`: a message of
+    //32768..65535 bytes would overflow the signed int32 that `<<` produces and
+    //make writeUInt throw (or write a corrupt length).
+    writeUInt(b1, (b1.length + b2.length) * 0x10000 + (opcode & 0xFFFF), 4);
+    const msg = Buffer.concat([b1, b2]);
+    if(fds.length) return await this.writeWithFds(msg, fds);
+    await this.write(msg);
   }
 
   async sync(){
