@@ -1,4 +1,7 @@
 'use strict';
+// Modified for @windowkit/wayland (2026): the synchronous `$` request
+// namespace, callback requests resolving with their `done` payload, and `fd`
+// event arguments. See NOTICE.
 import {EventEmitter, once} from "node:events";
 
 import { get_args } from "./args.js";

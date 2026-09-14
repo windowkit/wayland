@@ -1,8 +1,10 @@
-![Build Status](https://github.com/github/docs/actions/workflows/build.yml/badge.svg?branch=main&event=push)
+![Build Status](https://github.com/windowkit/wayland/actions/workflows/build.yml/badge.svg?branch=main&event=push)
 
-# Wayland client library
+# @windowkit/wayland
 
-low-level wayland client implementation in modern (nodejs 16+) javascript.
+low-level wayland client implementation in modern javascript, for Node 18.18+ and Bun.
+
+This is a fork of [node-wayland-client](https://github.com/sdumetz/node-wayland-client) (`wayland-client` on npm) by Sebastien Dumetz, under the same Apache-2.0 license — see [NOTICE](NOTICE). It adds what a client that draws needs: [file descriptors in both directions](#file-descriptors), [synchronous requests](#synchronous-requests), and [callback requests that resolve with their payload](#callback-payloads). It is the protocol layer of [react-x11](https://github.com/sidorares/react-x11)'s Wayland backend, and changes that are not specific to this fork are offered upstream.
 
 No runtime dependencies, no high level abstractions either.
 
@@ -12,7 +14,7 @@ It should be able to manage any wayland protocol extension out there (see [the p
 ## Installation
 
 ```sh
-npm install wayland-client
+npm install @windowkit/wayland
 ```
 
 If you wish to parse XML protocol files at runtime, you will need to install the `xml-js` package or provide your own parser.
@@ -24,7 +26,7 @@ Protocol files can also be provided pre-compiled as JSON files. See `convert.js`
 ### Bind a global
 
 ```js
-import open_display from "wayland-client";
+import open_display from "@windowkit/wayland";
 const wl_display = await open_display();
 await display.load("protocol/wlr_output_management_unstable_v1.xml");
 let wlr_output = await display.bind("zwlr_output_manager_v1");
@@ -37,7 +39,7 @@ let wlr_output = await display.bind("zwlr_output_manager_v1");
 Both socket-level errors and fatal Wayland protocol errors are reported on the `"error"` event of the `Display` object. Set up a handler after calling `init()` / `open_display()`:
 
 ```js
-import open_display from "wayland-client";
+import open_display from "@windowkit/wayland";
 
 const display = await open_display();
 display.on("error", (err) => {
@@ -99,11 +101,56 @@ The rest of the library uses wayland's wire protocol over a unix socket, so perf
 
 Message reading and writing uses pooled buffers so it shouldn't go too hard on the garbage collector.
 
+## What this fork adds
+
+### File descriptors
+
+Wayland moves everything bulky as a file descriptor: the keymap, `wl_shm` pools, clipboard and drag-and-drop pipes, dma-buf planes. Descriptors travel as SCM_RIGHTS ancillary data, which Node's `net.Socket` can neither send nor receive ([nodejs/node#53391](https://github.com/nodejs/node/issues/53391), closed as not planned), so they need a socket that can, handed to the `Display` constructor. Two exist:
+
+- [`x11-dri`](https://www.npmjs.com/package/x11-dri) 0.9 or later, `UnixSocket`: a native addon on the event loop, for Node.
+- [`x11`](https://www.npmjs.com/package/x11) 4.2.1 or later, `lib/fdpass-bun.js` with `receiveFds: true`: `bun:ffi` to libc, for Bun.
+
+```js
+import path from "node:path";
+import { once } from "node:events";
+import dri from "x11-dri";
+import { Display } from "@windowkit/wayland";
+
+const socket = new dri.UnixSocket(
+  path.join(process.env.XDG_RUNTIME_DIR, process.env.WAYLAND_DISPLAY ?? "wayland-0"),
+);
+await once(socket, "connect");
+const display = new Display(socket);
+await display.init();
+```
+
+Any socket works that is `net.Socket`-shaped and adds two methods:
+
+- `sendFds(buffer, fds, callback?)` writes `buffer` with `fds` attached as one `sendmsg(2)`, and takes ownership of the descriptors: they are closed once they are on the wire.
+- `takeFds(n)` returns the next `n` descriptors received, in arrival order.
+
+A request's `fd` arguments go out with the message that carries them, and an event's `fd` arguments take the received descriptors in parse order: the wire pairs descriptors with arguments by their position in the stream, not by message. On a plain `net.Socket` nothing changes — a request with an `fd` argument throws, and `fd` event arguments read as `-1`.
+
+### Synchronous requests
+
+Every interface has a `$` namespace holding the same requests, sent synchronously: a request that creates an object returns it rather than a promise for it, and nothing waits for the socket to drain. A Wayland request is one-way and the client allocates new ids itself, so nothing on the wire needs the `await` — the default methods' promises are backpressure. `$` is for code that cannot await, such as code inside React's commit phase:
+
+```js
+const surface = compositor.$.create_surface();
+const xdg_surface = wm_base.$.get_xdg_surface(surface.id);
+const toplevel = xdg_surface.$.get_toplevel();
+surface.$.commit();
+```
+
+It is named `$` because a protocol may itself have a request called `sync`, as `wl_display` does.
+
+### Callback payloads
+
+A request that creates a `wl_callback` resolves with what its `done` event carried: `await display.sync()` answers the serial, and `await surface.frame()` the frame's timestamp in milliseconds.
+
 ## Limits
 
-It lacks support for any kind of shared-memory features, mainly because they rely on file descriptor borrowing to share buffers between the client and the backend. It is relatively easy to perform fd borrowing through a [native addon](https://github.com/sdumetz/node-wayland-shm) but cleanly integrating this (the receiving end in particular) would require reimplementing most of the **net.Socket** class. A feature request exists for this ([#53391](https://github.com/nodejs/node/issues/53391)) but it's unclear whether it will be implemented one day.
-
-Examples of a good use case might be [zwp_idle_inhibit_manager](https://wayland.app/protocols/idle-inhibit-unstable-v1), [zwlr_output_manager](https://wayland.app/protocols/wlr-output-management-unstable-v1) or managing virtual inputs, like [zwlr_virtual_pointer](https://wayland.app/protocols/wlr-virtual-pointer-unstable-v1). Some other interfaces that do not require shared memory or file descriptor borrowing should also work fine.
+There is no `mmap`: a client that fills `wl_shm` memory needs its own way to reach it. A memfd written with `pwrite`, or read back with `pread`, works without one.
 
 
 ## API
@@ -140,7 +187,7 @@ Binds a global interface. It's the starting point of any interaction with the wa
 
 List all registered globals on this server. Note that this method is synchronous but one would need to wait for at least one `sync` event to have happened. Initializing through `await wl_display.init()` or `await open_display()` already waits for such an event.
 
-See [examples/list_globals.js](https://github.com/sdumetz/node-wayland-client/tree/main/examples/list_globals.js).
+See [examples/list_globals.js](https://github.com/windowkit/wayland/tree/main/examples/list_globals.js).
 
 ### class Wl_interface()
 
@@ -216,4 +263,4 @@ If you found something that definitely won't work, pelase submit an issue.
 
 Higher-level features should generally be implemented in a separate user-facing package, but I'm open for suggestion if you think some helpers might get used across a wide range of interfaces.
 
-a POC for supporting shared memory and FD borrowing through a native addon would be welcomed.
+Issues and pull requests are welcome at [windowkit/wayland](https://github.com/windowkit/wayland). Changes that are not specific to this fork are offered upstream to [node-wayland-client](https://github.com/sdumetz/node-wayland-client) as well.

@@ -1,0 +1,11 @@
+@windowkit/wayland
+https://github.com/windowkit/wayland
+
+This is a fork of node-wayland-client
+(https://github.com/sdumetz/node-wayland-client, published on npm as
+`wayland-client`), Copyright 2023-2026 Sebastien Dumetz and contributors,
+licensed under the Apache License, Version 2.0 (see LICENSE.md).
+
+Modifications Copyright 2026 Andrey Sidorov, under the same license. The
+changes this fork makes are listed in CHANGELOG.md, and each source file
+changed here carries a notice saying so.

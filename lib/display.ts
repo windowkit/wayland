@@ -1,4 +1,7 @@
 'use strict';
+// Modified for @windowkit/wayland (2026): a request that carries descriptors
+// goes out as one sendmsg(2), received descriptors are handed to the parser,
+// and `requestNow` is the synchronous request path. See NOTICE.
 import {Socket} from "node:net";
 import {EventEmitter, once} from "node:events";
 import fs from "fs/promises";

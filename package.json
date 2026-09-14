@@ -1,22 +1,42 @@
 {
-  "name": "wayland-client",
-  "version": "3.0.0",
-  "description": "pure javascript client implementation of the wayland protocol",
+  "name": "@windowkit/wayland",
+  "version": "3.1.0",
+  "description": "Pure JavaScript Wayland client: the wire protocol, proxies generated from protocol XML, and file descriptor passing. A fork of wayland-client.",
+  "keywords": [
+    "wayland",
+    "wayland-client",
+    "wayland-protocol",
+    "xdg-shell",
+    "compositor"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
     "start": "node index.js",
     "test": "mocha",
-    "prepack": "npm run build && npx convert-xml --types protocol",
+    "prepack": "npm run build && node convert.js --types protocol",
     "build": "tsc -b ."
   },
   "bin": {
     "convert-xml": "convert.js"
   },
   "author": "Sebastien DUMETZ <s.dumetz@holusion.com>",
-  "repository": "https://github.com/sdumetz/node-wayland-client",
+  "contributors": [
+    "Andrey Sidorov <andrey.sidorov@gmail.com>"
+  ],
+  "homepage": "https://github.com/windowkit/wayland#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/windowkit/wayland.git"
+  },
+  "bugs": {
+    "url": "https://github.com/windowkit/wayland/issues"
+  },
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "mocha": {
     "recursive": true,
     "spec": [
@@ -33,7 +53,8 @@
     "!dist/**/*.test.d.ts",
     "convert.js",
     "protocol/*.json",
-    "protocol/*.d.ts"
+    "protocol/*.d.ts",
+    "NOTICE"
   ],
   "optionalDependencies": {
     "xml-js": "^1.6.11"
