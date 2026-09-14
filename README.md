@@ -148,6 +148,16 @@ It is named `$` because a protocol may itself have a request called `sync`, as `
 
 A request that creates a `wl_callback` resolves with what its `done` event carried: `await display.sync()` answers the serial, and `await surface.frame()` the frame's timestamp in milliseconds.
 
+### Nullable arguments
+
+Where the protocol marks an argument `allow-null`, a request takes `null` for it: a null object goes out as the id 0, and a null string as a length of 0, which is not the same message as `""`. `null` is the only spelling. `0` and `undefined` are refused, since either is more often a bug than a choice, and so is `null` anywhere the protocol does not allow it. An event's nullable string arrives as `null`; its nullable object arrives, as before, as the id `0`.
+
+```js
+pointer.$.set_cursor(serial, null, 0, 0);   // hide the cursor
+offer.$.accept(serial, null);               // accept none of the offered types
+surface.$.attach(null, 0, 0);               // unmap
+```
+
 ## Limits
 
 There is no `mmap`: a client that fills `wl_shm` memory needs its own way to reach it. A memfd written with `pwrite`, or read back with `pread`, works without one.
