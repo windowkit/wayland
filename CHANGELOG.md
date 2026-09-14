@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/windowkit/wayland/compare/v3.1.0...v3.1.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* accept null for allow-null object and string arguments ([#4](https://github.com/windowkit/wayland/issues/4)) ([cdf0d53](https://github.com/windowkit/wayland/commit/cdf0d53c45131993c9fcda50f4ea068548b0171c))
+
 ## 3.1.0 (2026-09-14)
 
 The first release as `@windowkit/wayland`: a fork of

@@ -1,6 +1,6 @@
 {
   "name": "@windowkit/wayland",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Pure JavaScript Wayland client: the wire protocol, proxies generated from protocol XML, and file descriptor passing. A fork of wayland-client.",
   "keywords": [
     "wayland",
