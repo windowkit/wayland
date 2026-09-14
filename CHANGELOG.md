@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.2](https://github.com/windowkit/wayland/compare/v3.1.1...v3.1.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* resolve the imports in generated protocol typings ([#6](https://github.com/windowkit/wayland/issues/6)) ([3a62543](https://github.com/windowkit/wayland/commit/3a625434040680d6be9d6575ab44ec27b40cd981))
+
 ## [3.1.1](https://github.com/windowkit/wayland/compare/v3.1.0...v3.1.1) (2026-09-14)
 
 
