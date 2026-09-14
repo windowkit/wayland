@@ -1,4 +1,6 @@
 'use strict';
+// Modified for @windowkit/wayland (2026): `fd` arguments are collected for
+// sendmsg(2) and read from the connection's descriptor queue. See NOTICE.
 import { endianness } from "os";
 import { ArgumentDefinition, wl_arg } from "./definitions.js";
 
