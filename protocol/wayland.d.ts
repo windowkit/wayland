@@ -1,13 +1,15 @@
-import Wl_interface from "../lib/interface.js";
 import {
-    wl_new_id,
-    wl_uint,
-    wl_int,
-    wl_fixed,
-    wl_string,
-    wl_array,
-    wl_fd,
-  } from "../lib/definitions.js";
+  Wl_interface,
+  wl_new_id,
+  wl_uint,
+  wl_int,
+  wl_fixed,
+  wl_object,
+  wl_enum,
+  wl_string,
+  wl_array,
+  wl_fd,
+} from "#dist/index.js";
 
 /**
  * @summary core global object
@@ -1678,7 +1680,7 @@ export interface Wl_data_offer extends Wl_interface{
    * @param serial serial number of the accept request
    * @param mime_type mime type accepted by the client
    */
-  accept (serial: wl_uint, mime_type: wl_string) :Promise<void>;
+  accept (serial: wl_uint, mime_type: wl_string | null) :Promise<void>;
   
   
   
@@ -1836,7 +1838,7 @@ export interface Wl_data_source extends Wl_interface{
    *  Used for feedback during drag-and-drop.
    *  
    */
-  on(eventName: "target", listener: (mime_type: wl_string)=>void): this;
+  on(eventName: "target", listener: (mime_type: wl_string | null)=>void): this;
   
   
   /**
@@ -2149,7 +2151,7 @@ export interface Wl_data_device extends Wl_interface{
    * @param icon drag-and-drop icon surface
    * @param serial serial number of the implicit grab on the origin
    */
-  start_drag (source: wl_object, origin: wl_object, icon: wl_object, serial: wl_uint) :Promise<void>;
+  start_drag (source: wl_object | null, origin: wl_object, icon: wl_object | null, serial: wl_uint) :Promise<void>;
   
   
   
@@ -2164,7 +2166,7 @@ export interface Wl_data_device extends Wl_interface{
    * @param source data source for the selection
    * @param serial serial number of the event that triggered this request
    */
-  set_selection (source: wl_object, serial: wl_uint) :Promise<void>;
+  set_selection (source: wl_object | null, serial: wl_uint) :Promise<void>;
   
   
   
@@ -2664,7 +2666,7 @@ export interface Wl_shell_surface extends Wl_interface{
    * @param framerate framerate in mHz
    * @param output output on which the surface is to be fullscreen
    */
-  set_fullscreen (method: wl_uint, framerate: wl_uint, output: wl_object) :Promise<void>;
+  set_fullscreen (method: wl_uint, framerate: wl_uint, output: wl_object | null) :Promise<void>;
   
   
   
@@ -2726,7 +2728,7 @@ export interface Wl_shell_surface extends Wl_interface{
    *  
    * @param output output on which the surface is to be maximized
    */
-  set_maximized (output: wl_object) :Promise<void>;
+  set_maximized (output: wl_object | null) :Promise<void>;
   
   
   
@@ -2947,7 +2949,7 @@ export interface Wl_surface extends Wl_interface{
    * @param x surface-local x coordinate
    * @param y surface-local y coordinate
    */
-  attach (buffer: wl_object, x: wl_int, y: wl_int) :Promise<void>;
+  attach (buffer: wl_object | null, x: wl_int, y: wl_int) :Promise<void>;
   
   
   
@@ -3057,7 +3059,7 @@ export interface Wl_surface extends Wl_interface{
    *  
    * @param region opaque region of the surface
    */
-  set_opaque_region (region: wl_object) :Promise<void>;
+  set_opaque_region (region: wl_object | null) :Promise<void>;
   
   
   
@@ -3089,7 +3091,7 @@ export interface Wl_surface extends Wl_interface{
    *  
    * @param region input region of the surface
    */
-  set_input_region (region: wl_object) :Promise<void>;
+  set_input_region (region: wl_object | null) :Promise<void>;
   
   
   
@@ -3795,7 +3797,7 @@ export interface Wl_pointer extends Wl_interface{
    * @param hotspot_x surface-local x coordinate
    * @param hotspot_y surface-local y coordinate
    */
-  set_cursor (serial: wl_uint, surface: wl_object, hotspot_x: wl_int, hotspot_y: wl_int) :Promise<void>;
+  set_cursor (serial: wl_uint, surface: wl_object | null, hotspot_x: wl_int, hotspot_y: wl_int) :Promise<void>;
   
   
   

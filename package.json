@@ -12,6 +12,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "imports": {
+    "#dist/*": "./dist/*"
+  },
   "scripts": {
     "start": "node index.js",
     "test": "mocha",
