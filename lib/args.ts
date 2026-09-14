@@ -1,8 +1,9 @@
 'use strict';
 // Modified for @windowkit/wayland (2026): `fd` arguments are collected for
-// sendmsg(2) and read from the connection's descriptor queue. See NOTICE.
+// sendmsg(2) and read from the connection's descriptor queue, and `allow-null`
+// arguments are encoded and decoded as null. See NOTICE.
 import { endianness } from "os";
-import { ArgumentDefinition, wl_arg } from "./definitions.js";
+import { ArgumentDefinition, wl_arg, isNullable } from "./definitions.js";
 
 
 // The Wayland wire protocol always uses the host's native byte order (client
@@ -119,11 +120,15 @@ export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
     const arg = args[index];
     switch (type) {
       case "object":
+        // Where the protocol allows it, `null` stands for "no object", which
+        // the wire spells as the id 0. Only `null`: a 0 or an undefined is
+        // more often a bug than a choice, so they are refused like anywhere else.
+        if(arg === null && isNullable(def[index])) return 4;
         let id:number = (typeof arg === "object")?arg?.id : arg;
         if((typeof id !== "number")){
           throw new Error(`Invalid type: ${typeof arg} for ${name}. Expected a number or an object with a numeric ID`);
         }else if( !Number.isInteger(id) || id <= 0){
-          throw new Error(`Invalid ${type} value: ${id} (expect a positive integer)`);
+          throw new Error(`Invalid ${type} value: ${id} (expect a positive integer${isNullable(def[index])? ", or null for none" : ""})`);
         }
         return 4;
       case "enum":
@@ -141,6 +146,9 @@ export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
         if(Number.isNaN(arg)) throw new Error("Invalid int value: "+ arg);
         return 4;
       case "string":
+        // A null string is a bare length of 0 — not the same message as "",
+        // whose length of 1 counts its terminating NUL.
+        if(arg === null && isNullable(def[index])) return 4;
         if(typeof arg !== "string") throw new Error(`Invalid type: ${typeof arg} for ${name}. Expected a ${type}`);
         let strlen = Buffer.byteLength(arg, "utf-8") + 1 /* NULL byte */;
         strlen = ((strlen % 4 != 0)? strlen + 4 - (strlen % 4) : strlen);
@@ -171,7 +179,9 @@ export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
     const {type} = def[i];
     switch(type){
       case "object":
-        if(typeof arg == "object" && typeof arg?.id === "number") arg = arg.id;
+        // Only a nullable argument gets this far with null.
+        if(arg === null) arg = 0;
+        else if(typeof arg == "object" && typeof arg.id === "number") arg = arg.id;
       case "enum":
       case "new_id":
       case "uint":
@@ -187,6 +197,11 @@ export function format_args(args:any[], def:ArgumentDefinition[]) :Buffer{
         offset += 4;
         break;
       case "string":
+        if(arg === null){
+          writeUInt(b, 0, offset);
+          offset += 4;
+          break;
+        }
         const strlen =  Buffer.byteLength(arg, "utf-8")+1;
         writeUInt(b, strlen, offset);
         b.write(arg+'\x00', offset + 4, "utf-8");
@@ -239,6 +254,12 @@ export function get_args<T extends ArgumentDefinition[]>(b :Buffer, defs :T, tak
       case "string":
         let nLength = readUInt(b, offset);
         offset +=4;
+        if(nLength === 0){
+          // Only a null string has no length at all; "" still carries its NUL.
+          // Where the protocol does not allow null, keep answering "".
+          values.push(isNullable(arg)? null : "");
+          break;
+        }
         values.push(b.subarray(offset, nLength+offset -1).toString("utf-8").replace(/\x00+$/, ""));
         offset += ((nLength % 4 != 0)? nLength + 4 - (nLength % 4) : nLength);
         break;

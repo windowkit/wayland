@@ -1,4 +1,6 @@
 
+// Modified for @windowkit/wayland (2026): the `allow-null` attribute on
+// arguments, and `isNullable`. See NOTICE.
 export interface InterfaceDefinition{
   name: string;
   version: number;
@@ -67,6 +69,12 @@ export interface ArgumentDefinition<T = ArgumentType>{
    * In practice it is always present in the protocol files.
    */
   summary?: string;
+  /**
+   * The protocol's `allow-null` attribute, as the XML spells it: "true" where
+   * an `object` or `string` argument may be null. A null object is the id 0
+   * on the wire, and a null string is a length of 0. See {@link isNullable}.
+   */
+  "allow-null"?: "true" | "false" | boolean;
 }
 
 export interface InterfaceArgument extends ArgumentDefinition<"new_id">{
@@ -82,6 +90,12 @@ export function isInterfaceArgument(arg: ArgumentDefinition): arg is InterfaceAr
 
 export function isCallbackArgument(arg :ArgumentDefinition): arg is CallbackArgument{
   return arg?.type == "new_id" && arg.interface == "wl_callback"
+}
+
+/** Whether the protocol lets this argument be null (`allow-null="true"`). */
+export function isNullable(arg :ArgumentDefinition) :boolean{
+  const v = arg?.["allow-null"];
+  return v === true || v === "true";
 }
 
 export type EnumDefinition = EnumValue[];
@@ -121,7 +135,8 @@ export type wl_array = Uint8Array;
  */
 export type wl_fd = number;
 
-export type wl_arg = wl_new_id|wl_uint|wl_int|wl_fixed|wl_object|wl_enum|wl_string|wl_array;
+/** `null` is a nullable string argument that was null. */
+export type wl_arg = wl_new_id|wl_uint|wl_int|wl_fixed|wl_object|wl_enum|wl_string|wl_array|null;
 
 export function wl_arg_as_number(v:wl_arg):wl_new_id|wl_uint|wl_int|wl_fixed|wl_object|wl_enum{
   if(typeof v != "number") throw new Error("Invalid argument type : "+typeof v+" (expected a number)");

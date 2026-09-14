@@ -1,4 +1,16 @@
-import { ArgumentDefinition, EnumDefinition, EnumEntry, EventDefinition, InterfaceDefinition, RequestDefinition, isCallbackArgument, isInterfaceArgument } from "./definitions.js";
+// Modified for @windowkit/wayland (2026): `allow-null` arguments are typed as
+// possibly null. See NOTICE.
+import { ArgumentDefinition, EnumDefinition, EnumEntry, EventDefinition, InterfaceDefinition, RequestDefinition, isCallbackArgument, isInterfaceArgument, isNullable } from "./definitions.js";
+
+/**
+ * An argument's type in the generated declarations. A request's nullable
+ * argument takes null, and an event's nullable string arrives as null; an
+ * event's nullable object arrives as the id 0, so its type is unchanged.
+ */
+function argType(a :ArgumentDefinition, event :boolean) :string{
+  const nullable = isNullable(a) && (!event || a.type === "string");
+  return `wl_${a.type}${nullable? " | null" : ""}`;
+}
 
 
 
@@ -63,7 +75,7 @@ const genEvent = ({name, description, summary, args} :EventDefinition)=>{
     args = args.slice(1);
     params.push(`${first_arg.name}: ${nameToClass(first_arg.interface)}`);
   }
-  params.push(...args.map(a=> `${a.name}: wl_${a.type}`));
+  params.push(...args.map(a=> `${a.name}: ${argType(a, true)}`));
   return `
 /**${summaryLine(summary)}
  * ${comment(description)}
@@ -88,7 +100,7 @@ const genRequest = ({name, description, summary, args} :RequestDefinition)=>{
  * ${comment(description)}
  * ${args.map(a=> `@param ${a.name} ${comment(a.summary ?? "")}`).join("\n * ")}
  */
-${name} (${args.map(a=> `${a.name}: wl_${a.type}`).join(", ")}) :Promise<${returnType}>;
+${name} (${args.map(a=> `${a.name}: ${argType(a, false)}`).join(", ")}) :Promise<${returnType}>;
 
 `};
 
