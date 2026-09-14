@@ -10,11 +10,17 @@ jobs:
     name: run tests
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        # mocha 12 needs Node ^20.19 || >=22.12. The package itself has no
+        # runtime dependencies and still declares >=18.18.
+        node-version: [20, 22, 24, 26]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - name: install
         run: npm ci
