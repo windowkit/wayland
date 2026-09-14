@@ -1,6 +1,7 @@
 // Modified for @windowkit/wayland (2026): `allow-null` arguments are typed as
-// possibly null. See NOTICE.
-import { ArgumentDefinition, EnumDefinition, EnumEntry, EventDefinition, InterfaceDefinition, RequestDefinition, isCallbackArgument, isInterfaceArgument, isNullable } from "./definitions.js";
+// possibly null, and the generated header imports every `wl_*` type from a
+// module that resolves in the published package. See NOTICE.
+import { ArgumentDefinition, ArgumentType, EnumDefinition, EnumEntry, EventDefinition, InterfaceDefinition, RequestDefinition, isCallbackArgument, isInterfaceArgument, isNullable } from "./definitions.js";
 
 /**
  * An argument's type in the generated declarations. A request's nullable
@@ -13,19 +14,25 @@ function argType(a :ArgumentDefinition, event :boolean) :string{
 }
 
 
+/**
+ * Every argument type. Declarations spell an argument's type `wl_${type}`, so
+ * the header imports each of them; keying the list by ArgumentType makes a new
+ * type fail to compile until it is added here.
+ */
+const argumentTypes = Object.keys({
+  new_id: 0, uint: 0, int: 0, fixed: 0, object: 0, enum: 0, string: 0, array: 0, fd: 0,
+} satisfies Record<ArgumentType, 0>);
 
+/**
+ * `internal` typings are the ones shipped in the package's protocol/. lib/
+ * compiles against them and the package does not publish lib/, so they import
+ * dist/ through package.json "imports": TypeScript maps "#dist/*" back to lib/
+ * while it builds dist/, and to dist/ in an installed package. Anyone else's
+ * typings import the package.
+ */
 export default function makeTypes(interfaces:InterfaceDefinition[], internal = false){
   return ""
-  + `import ${internal?"Wl_interface":"{ Wl_interface }"} from "${internal?"../lib/interface.js":"wayland-client"}";\n`
-  + `import {
-    wl_new_id,
-    wl_uint,
-    wl_int,
-    wl_fixed,
-    wl_string,
-    wl_array,
-    wl_fd,
-  } from "${internal?"../lib/definitions.js":"wayland-client"}";\n`
+  + `import {\n  Wl_interface,\n${argumentTypes.map(t=>`  wl_${t},\n`).join("")}} from "${internal?"#dist/index.js":"@windowkit/wayland"}";\n`
   + interfaces.map(genInterface).join("\n");
 }
 
